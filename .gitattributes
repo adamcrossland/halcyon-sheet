@@ -1,0 +1,2 @@
+# The macOS launcher is a shell script and must keep Unix line endings.
+*.command text eol=lf

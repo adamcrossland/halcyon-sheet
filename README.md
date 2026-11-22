@@ -12,6 +12,27 @@ dotnet run --project src/Halcyon.Web --urls http://localhost:5180
 
 Then open http://localhost:5180.
 
+## Packages for players (Windows and macOS)
+
+```powershell
+./publish.ps1
+```
+
+This builds three zips in `artifacts/packages`. Each one runs without installing .NET:
+
+| Zip | For |
+| --- | --- |
+| `Halcyon-windows.zip` | Windows 10/11 (64-bit) |
+| `Halcyon-mac-apple-silicon.zip` | Macs with M1 or later |
+| `Halcyon-mac-intel.zip` | Older Intel Macs |
+
+Use `./publish.ps1 -Targets windows` to build just one. Each zip includes a `READ ME.txt` for players.
+
+- **Windows:** players double-click `Halcyon.exe`. A console window opens along with their browser, and closing the window stops the app. Because the app isn't code-signed, SmartScreen warns the first time ("More info" → "Run anyway").
+- **macOS:** players right-click `Start Halcyon.command` → Open the first time. Apple Silicon Macs only run signed programs, and Windows can't sign Mac apps, so that script clears the download quarantine and gives the app a local ad-hoc signature (`codesign --sign -`) before starting it. To get rid of the warning entirely you'd need an Apple Developer account to sign and notarize the app on a Mac.
+
+The packaged app runs in **desktop mode** (`Halcyon:Desktop` is true in `appsettings.json`). It listens only on `127.0.0.1`, uses port 5180 or any free port if that one is taken, and opens the default browser. `dotnet run` uses development settings, where desktop mode is off. To host it as a website instead, set `Halcyon:Desktop` to false.
+
 ## What it does
 
 - **New runner wizard**: concept (people, class, name roller from *The Book of Odds*), scores (either array, or a class quickbuild), class powers (with the Sensitive's required *Spill-touched* and its Weird power), people powers (with choices like *Free of fate* or *Protagonistic*), starting kit, shopping with the starting budget, an oddment roller, and the "file on you" questions.
@@ -19,6 +40,12 @@ Then open http://localhost:5180.
 - **Runner page**: edit everything on the sheet between sessions: current pool, exposure and marks (with a "coming home" d12 roll), conditions, weapons, armor, leavings, gear, contacts, money and notes.
 - **PDF**: fills `Character Sheet.pdf`. *Clean PDF* leaves current HEA/GRT, exposure, conditions and "used" boxes blank so you can track them in pencil. Anything that doesn't fit the sheet (more than 3 weapons, more than 4 advancement powers, long notes, and so on) goes on an extra page.
 - **Export / import** a runner as JSON to move it between machines or share it with the GM.
+
+## Icon
+
+The artwork is in `packaging/icon`. `halcyon-icon.svg` is the full icon and `halcyon-icon-small.svg` is a simplified version for 32 px and smaller. The PNGs in `packaging/icon/png` were rendered from those two files. After changing the artwork, re-render the PNGs at the same sizes and names, then run `packaging/icon/build-ico.ps1`. That rebuilds `halcyon.ico`, which becomes the `Halcyon.exe` icon, and copies the browser-tab icons into `wwwroot`.
+
+On macOS the icon shows in the browser tab only. A bare program or `.command` file can't carry an icon through a zip; that needs a `.app` bundle.
 
 ## Where things live
 

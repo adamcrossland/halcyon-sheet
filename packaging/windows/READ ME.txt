@@ -1,0 +1,18 @@
+HALCYON · Runner's Files (Windows)
+==================================
+
+To start
+--------
+1. Unzip this folder somewhere you'll keep it (for example, Documents).
+2. Double-click Halcyon.exe.
+   If Windows shows "Windows protected your PC", click "More info", then "Run anyway".
+   (The app isn't signed with a paid certificate.)
+3. A console window opens and your browser opens on the app.
+
+To stop, close the console window.
+
+Your runners are saved in %LOCALAPPDATA%\HalcyonSheet\characters
+(they stay there when you update the app).
+
+If the browser doesn't open, open the address shown in the console window
+(usually http://127.0.0.1:5180).

@@ -8,6 +8,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Icon for Halcyon.exe (Explorer, taskbar, console window). Regenerate with packaging/icon/build-ico.ps1. -->
+    <ApplicationIcon>..\..\packaging\icon\halcyon.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>

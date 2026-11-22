@@ -1,9 +1,20 @@
 using System.Text;
 using Halcyon.Core.Pdf;
 using Halcyon.Core.Storage;
+using Halcyon.Web;
 using Halcyon.Web.Components;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = Desktop.ContentRoot(),
+});
+
+// Desktop mode (the packaged app): serve only this computer and open the browser.
+// Turn it off with Halcyon:Desktop=false to host the app as a website.
+bool desktop = builder.Configuration.GetValue("Halcyon:Desktop", false);
+if (desktop && Desktop.NoUrlsConfigured(builder.Configuration))
+    builder.WebHost.UseUrls(Desktop.LocalUrl());
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
@@ -23,12 +34,15 @@ builder.Services.AddSingleton(_ => string.IsNullOrWhiteSpace(templatePath)
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())
-{
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
+
+if (!desktop && !app.Environment.IsDevelopment())
+{
     app.UseHsts();
+    app.UseHttpsRedirection();
 }
 
-app.UseHttpsRedirection();
+if (desktop) Desktop.OpenBrowserWhenReady(app);
 app.UseAntiforgery();
 app.MapStaticAssets();
 

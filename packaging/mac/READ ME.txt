@@ -1,0 +1,31 @@
+HALCYON · Runner's Files (macOS)
+================================
+
+To start
+--------
+1. Unzip this folder somewhere you'll keep it (for example, Applications or Documents).
+2. Right-click "Start Halcyon.command" and choose Open. macOS warns that it's from an
+   unidentified developer; click Open. (You only need to right-click the first time.
+   After that, double-click works.)
+3. A Terminal window opens and your browser opens on the app.
+
+To stop, close the Terminal window.
+
+Your runners are saved in ~/Library/Application Support/HalcyonSheet/characters
+(they stay there when you update the app).
+
+If it won't start
+-----------------
+Open Terminal, drag this folder onto it after typing "cd ", press Return, then run:
+
+    xattr -dr com.apple.quarantine .
+    codesign --force --sign - ./Halcyon
+    ./Halcyon
+
+Then open the address it prints (usually http://127.0.0.1:5180).
+
+Which download?
+---------------
+- Halcyon-mac-apple-silicon: Macs with an M1, M2, M3 or later chip.
+- Halcyon-mac-intel: older Intel Macs.
+(Apple menu > About This Mac shows which one you have.)
