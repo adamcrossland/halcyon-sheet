@@ -1,0 +1,15 @@
+@* Scrolls the window to the top whenever Key changes (wizard steps). *@
+@inject IJSRuntime JS
+
+@code {
+    [Parameter] public object? Key { get; set; }
+    object? _last;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) { _last = Key; return; }
+        if (Equals(Key, _last)) return;
+        _last = Key;
+        await JS.InvokeVoidAsync("scrollTo", 0, 0);
+    }
+}

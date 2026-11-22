@@ -1,0 +1,449 @@
+@page "/create"
+@inject CharacterStore Store
+@inject NavigationManager Nav
+
+<PageTitle>Halcyon · New runner</PageTitle>
+
+<h1>New runner</h1>
+<StepNav Steps="StepNames" Current="step" OnSelect="GoTo" />
+<ScrollToTopOnChange Key="step" />
+
+<section class="wizard-step">
+@switch (step)
+{
+    case 0: // ------------------------------------------------------------ Concept
+        <h2>Who are you?</h2>
+        <div class="grid-2">
+            <label>Name / street name
+                <div class="with-button">
+                    <input @bind="d.Name" @bind:event="oninput" placeholder="e.g. Dace Holloway" />
+                    <button type="button" class="btn btn-sm" @onclick="RollName" title="Roll on the Book of Odds name tables">🎲 Roll</button>
+                </div>
+            </label>
+            <label>Player <input @bind="d.Player" placeholder="Your name" /></label>
+            <label>Look &amp; distinguishing marks <input @bind="d.Look" /></label>
+            <label>Crew <input @bind="d.Crew" /></label>
+        </div>
+
+        <h3>People</h3>
+        <div class="choice-grid">
+            @foreach (var p in Catalog.Peoples)
+            {
+                <button type="button" class="choice @(d.PeopleId == p.Id ? "selected" : "")" @onclick="() => SetPeople(p.Id)">
+                    <strong>@p.Name</strong> <span class="muted">@p.Kind</span>
+                    <span class="choice-body">@p.Blurb</span>
+                    <span class="choice-foot">Best at: @p.BestAt · Worst at: @p.WorstAt</span>
+                </button>
+            }
+        </div>
+
+        <h3>Class</h3>
+        <div class="choice-grid">
+            @foreach (var c in Catalog.Classes)
+            {
+                <button type="button" class="choice @(d.ClassId == c.Id ? "selected" : "")" @onclick="() => SetClass(c.Id)">
+                    <strong>@c.Name</strong> <span class="muted">@c.Role</span>
+                    <span class="choice-body">@c.Blurb</span>
+                    <span class="choice-foot">Burden: @c.BurdenName</span>
+                </button>
+            }
+        </div>
+        break;
+
+    case 1: // ------------------------------------------------------------ Scores
+        <h2>Scores</h2>
+        <p>Assign one of the two arrays to COM, MOV, REA, WIL and CHA, or start from a quickbuild.</p>
+        @if (d.Class is { } cls1)
+        {
+            <div class="quickbuilds">
+                <span>@cls1.Name quickbuilds:</span>
+                @foreach (var qb in cls1.Quickbuilds)
+                {
+                    <button type="button" class="btn btn-sm @(d.Quickbuild == qb.Name ? "btn-primary" : "")" @onclick="() => ApplyQuickbuild(qb)">
+                        @qb.Name (d@(qb.Com)/d@(qb.Mov)/d@(qb.Rea)/d@(qb.Wil)/d@(qb.Cha))
+                    </button>
+                }
+            </div>
+            @foreach (var r in cls1.Restrictions) { <p class="hint">⚠ @r</p> }
+        }
+
+        <div class="arrays">
+            @for (int a = 0; a < Catalog.ScoreArrays.Length; a++)
+            {
+                var ai = a;
+                <label class="radio">
+                    <input type="radio" name="array" checked="@(arrayIndex == ai)" @onchange="() => SetArray(ai)" />
+                    @string.Join(", ", Catalog.ScoreArrays[ai].Select(x => "d" + x))
+                </label>
+            }
+        </div>
+
+        <div class="score-grid">
+            @foreach (var (score, longName, uses) in Catalog.ScoreInfo)
+            {
+                var s = score;
+                <div class="score-box">
+                    <div class="score-name">@Catalog.ScoreName(s) <small>@longName</small></div>
+                    <select value="@(d.Dice.TryGetValue(s, out var v) ? v.ToString() : "")" @onchange="e => SetDie(s, e.Value?.ToString())">
+                        <option value="">—</option>
+                        @foreach (var die in Catalog.ScoreArrays[arrayIndex].Distinct())
+                        {
+                            <option value="@die">d@(die)</option>
+                        }
+                    </select>
+                    <div class="hint">@uses</div>
+                </div>
+            }
+        </div>
+        <p class="hint">Remaining from this array: @RemainingDice()</p>
+        @if (d.ScoresComplete)
+        {
+            <p class="derived">Before people bonuses: HEA @(d.Dice[Score.Com] + d.Dice[Score.Mov]) · GRT @(d.Dice[Score.Rea] + d.Dice[Score.Wil]) · starting scrip @d.StartingScrip</p>
+        }
+        break;
+
+    case 2: // ------------------------------------------------------------ Class powers
+        var cls = d.Class!;
+        <h2>@cls.Name powers <small>choose @Catalog.PowersAtFirstLevel (@d.ClassPowerIds.Count chosen)</small></h2>
+        <div class="power-grid">
+            @foreach (var p in cls.Powers)
+            {
+                var pw = p;
+                <PowerCard Power="pw" Selected="d.ClassPowerIds.Contains(pw.Id)"
+                           Disabled="!d.ClassPowerIds.Contains(pw.Id) && d.ClassPowerIds.Count >= Catalog.PowersAtFirstLevel"
+                           OnToggle="ToggleClassPower">
+                    @if (pw.Choice != ChoiceKind.None)
+                    {
+                        <ChoiceInput Power="pw" Value="@d.Choice(pw.Id)" ValueChanged="v => d.Choices[pw.Id] = v" />
+                    }
+                </PowerCard>
+            }
+        </div>
+        <p class="burden"><strong>Burden — @cls.BurdenName.</strong> @cls.BurdenText</p>
+        break;
+
+    case 3: // ------------------------------------------------------------ People powers
+        var ppl = d.People!;
+        <h2>@ppl.Name powers</h2>
+        <h3>Gain all</h3>
+        <div class="power-grid">
+            @foreach (var p in ppl.GainAll)
+            {
+                var pw = p;
+                <PowerCard Power="pw" Selected="true" Clickable="false">
+                    @if (pw.Choice != ChoiceKind.None)
+                    {
+                        <ChoiceInput Power="pw" Value="@d.Choice(pw.Id)" ValueChanged="v => d.Choices[pw.Id] = v" />
+                    }
+                    @if (pw.Id == "made-for-purpose")
+                    {
+                        <label class="inline">Maker <input value="@Maker" @onchange="SetMaker" placeholder="Who grew you?" /></label>
+                    }
+                </PowerCard>
+            }
+        </div>
+        <h3>Choose @Catalog.PeopleChoices <small>(@d.PeopleChoiceIds.Count chosen)</small></h3>
+        <div class="power-grid">
+            @foreach (var p in ppl.Choose)
+            {
+                var pw = p;
+                <PowerCard Power="pw" Selected="d.PeopleChoiceIds.Contains(pw.Id)"
+                           Disabled="!d.PeopleChoiceIds.Contains(pw.Id) && d.PeopleChoiceIds.Count >= Catalog.PeopleChoices"
+                           OnToggle="TogglePeoplePower">
+                    @if (pw.Choice != ChoiceKind.None)
+                    {
+                        <ChoiceInput Power="pw" Value="@d.Choice(pw.Id)" ValueChanged="v => d.Choices[pw.Id] = v" />
+                    }
+                </PowerCard>
+            }
+        </div>
+        <p class="derived">With these powers: HEA <strong>@d.Hea</strong> · GRT <strong>@d.Grt</strong></p>
+        break;
+
+    case 4: // ------------------------------------------------------------ Gear
+        var kitCls = d.Class!;
+        <h2>Gear &amp; scrip</h2>
+        <div class="budget @(d.Scrip < 0 ? "over" : "")">
+            Starting scrip 10 × (maxWIL + maxCHA) = <strong>@d.StartingScrip</strong> · spent @d.Spent · left <strong>@d.Scrip</strong>
+        </div>
+
+        <h3>@kitCls.Name starting kit <small>free</small></h3>
+        @for (int i = 0; i < kitCls.KitChoices.Length; i++)
+        {
+            var ci = i;
+            var choice = kitCls.KitChoices[ci];
+            <div class="kit-choice">
+                <span>@choice.Prompt:</span>
+                @for (int o = 0; o < choice.Options.Length; o++)
+                {
+                    var oi = o;
+                    <label class="radio">
+                        <input type="radio" name="kit@(ci)" checked="@(KitChoice(ci) == oi)" @onchange="() => SetKitChoice(ci, oi)" />
+                        @choice.Options[oi].Label
+                    </label>
+                }
+            </div>
+        }
+        <ul class="kit-list">
+            @foreach (var id in d.KitGearIds)
+            {
+                <li>@(Catalog.FindGear(id)?.Name ?? id)</li>
+            }
+            @foreach (var extra in CharacterRules.StartingKitExtras(kitCls, d.ClassPowerIds))
+            {
+                <li>@extra</li>
+            }
+        </ul>
+
+        <h3>Oddment</h3>
+        <div class="with-button">
+            <input @bind="d.Oddment" placeholder="Something odd you carry (burn it to reverse a disaster)" />
+            <button type="button" class="btn btn-sm" @onclick="RollOddment">🎲 Roll d20</button>
+        </div>
+
+        <h3>Buy more</h3>
+        @if (d.PurchasedGearIds.Count > 0)
+        {
+            <ul class="cart">
+                @for (int i = 0; i < d.PurchasedGearIds.Count; i++)
+                {
+                    var idx = i;
+                    var g = Catalog.FindGear(d.PurchasedGearIds[idx]);
+                    <li>@g?.Name <span class="muted">@g?.Price</span> <button type="button" class="linklike" @onclick="() => d.PurchasedGearIds.RemoveAt(idx)">remove</button></li>
+                }
+            </ul>
+        }
+        <div class="shop-filter">
+            @foreach (var cat in ShopCategories)
+            {
+                <button type="button" class="btn btn-sm @(shopCategory == cat ? "btn-primary" : "")" @onclick="() => shopCategory = cat">@cat</button>
+            }
+        </div>
+        <table class="shop">
+            <thead><tr><th>Item</th><th>Details</th><th>Legality</th><th class="num">Price</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var g in Catalog.Gear.Where(g => g.Category == shopCategory && g.Price is not null))
+                {
+                    var item = g;
+                    <tr class="@(item.Price > d.Scrip ? "dim" : "")">
+                        <td>@item.Name</td>
+                        <td class="small">@GearDetails(item)</td>
+                        <td class="small">@item.Legality</td>
+                        <td class="num">@item.Price</td>
+                        <td><button type="button" class="btn btn-sm" disabled="@(item.Price > d.Scrip)" @onclick="() => d.PurchasedGearIds.Add(item.Id)">Buy</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        break;
+
+    case 5: // ------------------------------------------------------------ Story
+        <h2>The file on you</h2>
+        <p class="burden"><strong>Burden — @d.Class!.BurdenName.</strong> @d.Class.BurdenText</p>
+        <label>Why do you keep going back in? <input @bind="d.WhyGoBackIn" /></label>
+        <label>Who's waiting for you in Halcyon, and what do they think you do? <input @bind="d.WhoIsWaiting" /></label>
+        <label>What did you see in there that you've never told anyone? <input @bind="d.WhatYouSaw" /></label>
+        <label>Who do you owe? (debts &amp; who holds them) <input @bind="d.Debts" /></label>
+        <h3>Contacts <small>who owes you, who wants something</small></h3>
+        @foreach (var k in d.Contacts)
+        {
+            <div class="grid-2">
+                <input @bind="k.Who" placeholder="Who" />
+                <input @bind="k.OwesOrWants" placeholder="Owes you / wants" />
+            </div>
+        }
+        break;
+
+    case 6: // ------------------------------------------------------------ Review
+        <h2>Review</h2>
+        <Problems Items="d.ValidateAll()" />
+        <div class="review">
+            <div>
+                <h3>@d.Name</h3>
+                <p>@d.People?.Name @d.Class?.Name · level 1@(string.IsNullOrWhiteSpace(d.Player) ? "" : " · player " + d.Player)</p>
+                <table class="mini">
+                    <tr>@foreach (var s in Enum.GetValues<Score>()) { <th>@Catalog.ScoreName(s)</th> }<th>HEA</th><th>GRT</th></tr>
+                    <tr>
+                        @foreach (var s in Enum.GetValues<Score>())
+                        {
+                            var bonus = CharacterRules.ScoreBonus(d.BuildPowers(), s);
+                            <td>d@(d.Dice.GetValueOrDefault(s))@(bonus != 0 ? $" ({CharacterRules.Signed(bonus)})" : "")</td>
+                        }
+                        <td>@d.Hea</td><td>@d.Grt</td>
+                    </tr>
+                </table>
+                <p><strong>Scrip:</strong> @d.Scrip · <strong>Oddment:</strong> @(string.IsNullOrWhiteSpace(d.Oddment) ? "none" : d.Oddment)</p>
+            </div>
+            <div>
+                <h3>Powers</h3>
+                <ul>
+                    @foreach (var p in d.BuildPowers())
+                    {
+                        <li><strong>@p.DisplayName</strong> <span class="muted">(@p.Origin@(p.GainAll ? ", gain all" : ""))</span></li>
+                    }
+                </ul>
+            </div>
+        </div>
+        break;
+}
+</section>
+
+<Problems Items="problems" />
+
+<div class="wizard-nav">
+    @if (step > 0) { <button type="button" class="btn" @onclick="Back">Back</button> }
+    <span class="spacer"></span>
+    @if (step < StepNames.Length - 1)
+    {
+        <button type="button" class="btn btn-primary" @onclick="Next">Next</button>
+    }
+    else
+    {
+        <button type="button" class="btn btn-primary" disabled="@(d.ValidateAll().Count > 0)" @onclick="Save">Save runner</button>
+    }
+</div>
+
+@code {
+    static readonly string[] StepNames = ["Concept", "Scores", "Class powers", "People powers", "Gear", "Story", "Review"];
+    static readonly string[] ShopCategories = ["Iron", "Light", "Close quarters", "Thrown", "Armor", "Runner's kit", "Cells", "Services", "Vehicles"];
+
+    readonly CreationDraft d = new();
+    int step;
+    int arrayIndex;
+    string shopCategory = "Iron";
+    List<string>? problems;
+
+    List<string> Validate(int s) => s switch
+    {
+        0 => d.ValidateConcept(),
+        1 => d.ValidateScores(),
+        2 => d.ValidateClassPowers(),
+        3 => d.ValidatePeoplePowers(),
+        4 => d.ValidateGear(),
+        _ => [],
+    };
+
+    void Next()
+    {
+        problems = Validate(step);
+        if (problems.Count == 0) step++;
+    }
+
+    void Back()
+    {
+        problems = null;
+        step--;
+    }
+
+    void GoTo(int s)
+    {
+        problems = null;
+        step = s;
+    }
+
+    void SetPeople(string id)
+    {
+        if (d.PeopleId == id) return;
+        d.PeopleId = id;
+        d.PeopleChoiceIds.Clear();
+    }
+
+    void SetClass(string id)
+    {
+        if (d.ClassId == id) return;
+        d.ClassId = id;
+        d.ClassPowerIds = d.Class!.Powers.Where(p => p.Required).Select(p => p.Id).ToList();
+        d.KitChoices.Clear();
+        d.Quickbuild = "";
+    }
+
+    void RollName()
+    {
+        var r = Random.Shared;
+        string Pick(string[] a) => a[r.Next(a.Length)];
+        d.Name = d.PeopleId switch
+        {
+            "cultivar" => Catalog.CultivarNames[r.Next(12)] is var cn ? $"{cn.Name} ({cn.Line})" : "",
+            "automaton" => Catalog.AutomatonNames[r.Next(12)] is var an ? $"{an.Name} ({an.Designation})" : "",
+            "lumm" => Pick(Catalog.LummNames),
+            "quill" => Pick(Catalog.QuillNames),
+            "spillborn" => $"{Pick(Catalog.HumanGiven)} \"{Pick(Catalog.SpillbornNicknames)}\" {Pick(Catalog.HumanFamily)}",
+            _ => r.Next(3) == 0
+                ? $"{Pick(Catalog.HumanGiven)} \"{Pick(Catalog.StreetNames)}\" {Pick(Catalog.HumanFamily)}"
+                : $"{Pick(Catalog.HumanGiven)} {Pick(Catalog.HumanFamily)}",
+        };
+    }
+
+    void RollOddment() => d.Oddment = Catalog.Oddments[Random.Shared.Next(Catalog.Oddments.Length)];
+
+    void SetArray(int a)
+    {
+        arrayIndex = a;
+        d.Dice.Clear();
+        d.Quickbuild = "";
+    }
+
+    void SetDie(Score s, string? value)
+    {
+        d.Quickbuild = "";
+        if (int.TryParse(value, out var die)) d.Dice[s] = die;
+        else d.Dice.Remove(s);
+    }
+
+    string RemainingDice()
+    {
+        var left = Catalog.ScoreArrays[arrayIndex].ToList();
+        foreach (var v in d.Dice.Values) left.Remove(v);
+        return left.Count == 0 ? "none — all assigned" : string.Join(", ", left.Select(x => "d" + x));
+    }
+
+    void ApplyQuickbuild(Quickbuild qb)
+    {
+        d.ApplyQuickbuild(qb);
+        var sorted = qb.Dice.Values.OrderByDescending(v => v).ToArray();
+        arrayIndex = Array.FindIndex(Catalog.ScoreArrays, a => a.SequenceEqual(sorted)) is var i and >= 0 ? i : 0;
+    }
+
+    void ToggleClassPower(PowerDef p)
+    {
+        if (d.ClassPowerIds.Contains(p.Id))
+        {
+            if (!p.Required) d.ClassPowerIds.Remove(p.Id);
+        }
+        else if (d.ClassPowerIds.Count < Catalog.PowersAtFirstLevel) d.ClassPowerIds.Add(p.Id);
+    }
+
+    void TogglePeoplePower(PowerDef p)
+    {
+        if (!d.PeopleChoiceIds.Remove(p.Id) && d.PeopleChoiceIds.Count < Catalog.PeopleChoices)
+            d.PeopleChoiceIds.Add(p.Id);
+    }
+
+    string Maker => d.Choice("maker");
+
+    void SetMaker(ChangeEventArgs e) => d.Choices["maker"] = e.Value?.ToString() ?? "";
+
+    int KitChoice(int i) => i < d.KitChoices.Count ? d.KitChoices[i] : 0;
+
+    void SetKitChoice(int i, int option)
+    {
+        while (d.KitChoices.Count <= i) d.KitChoices.Add(0);
+        d.KitChoices[i] = option;
+    }
+
+    static string GearDetails(GearDef g) => g.Kind switch
+    {
+        GearKind.Weapon when g.Weapon is { } w => $"{w.Damage} · {w.Range} · {w.Tags}",
+        GearKind.Armor => $"DR {g.ArmorDr} · {g.Notes}",
+        _ => g.Notes,
+    };
+
+    void Save()
+    {
+        problems = d.ValidateAll();
+        if (problems.Count > 0) return;
+        var c = d.Build();
+        Store.Save(c);
+        Nav.NavigateTo($"character/{c.Id}?new=1");
+    }
+}

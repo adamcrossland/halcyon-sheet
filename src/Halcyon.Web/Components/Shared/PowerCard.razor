@@ -1,0 +1,41 @@
+@* A selectable card describing one power. *@
+<div class="power-card @(Selected ? "selected" : "") @(Disabled ? "disabled" : "") @(Clickable ? "clickable" : "")"
+     @onclick="Toggle" role="@(Clickable ? "checkbox" : null)" aria-checked="@(Clickable ? Selected.ToString().ToLowerInvariant() : null)">
+    <div class="pc-head">
+        @if (Clickable)
+        {
+            <span class="pc-check">@(Selected ? "✔" : "")</span>
+        }
+        <span class="pc-name">@Power.Name</span>
+        @if (Power.Marquee) { <span class="tag tag-marquee">marquee</span> }
+        @if (Power.Required) { <span class="tag tag-required">required</span> }
+        @if (Power.Drawback) { <span class="tag tag-drawback">drawback</span> }
+        @if (Extra is not null) { <span class="tag">@Extra</span> }
+    </div>
+    <div class="pc-meta">
+        <span>@Power.Type</span>
+        @if (Power.Cost is not ("—" or "")) { <span>· @Power.Cost</span> }
+        @if (Power.SrdSource is not null) { <span class="pc-src">· @Power.SrdSource</span> }
+    </div>
+    <div class="pc-summary">@Power.Summary</div>
+    @if (ChildContent is not null && Selected)
+    {
+        <div class="pc-choice" @onclick:stopPropagation="true">@ChildContent</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public PowerDef Power { get; set; } = default!;
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Clickable { get; set; } = true;
+    [Parameter] public string? Extra { get; set; }
+    [Parameter] public EventCallback<PowerDef> OnToggle { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    async Task Toggle()
+    {
+        if (!Clickable || Disabled) return;
+        await OnToggle.InvokeAsync(Power);
+    }
+}

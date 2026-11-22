@@ -1,0 +1,240 @@
+@page "/character/{Id:guid}/levelup"
+@inject CharacterStore Store
+@inject NavigationManager Nav
+
+<PageTitle>Halcyon · Level up</PageTitle>
+
+@if (c is null)
+{
+    <p>That runner isn't on file. <a href="">Back to the roster</a>.</p>
+    return;
+}
+
+<h1>Level up: @c.Name <small>level @c.Level → @(c.Level + 1)</small></h1>
+<p class="hint">Each adventure completed: +1 level, +6 pool (split HEA/GRT as you like), +1 power (class, advanced, or Spill-touch).</p>
+<StepNav Steps="StepNames" Current="step" OnSelect="s => { problems = null; step = s; }" />
+<ScrollToTopOnChange Key="step" />
+
+<section class="wizard-step">
+@switch (step)
+{
+    case 0: // ------------------------------------------------------------ Pool
+        <h2>Split 6 pool</h2>
+        <div class="split">
+            <div class="split-side"><span>HEA</span><strong>+@heaGain</strong><span class="muted">max @(CharacterRules.MaxHea(c)) → @(CharacterRules.MaxHea(c) + heaGain)</span></div>
+            <input type="range" min="0" max="@Catalog.PoolPerLevel" step="1" value="@(Catalog.PoolPerLevel - heaGain)"
+                   @oninput="SetSplit" aria-label="Pool split between HEA (left) and GRT (right)" />
+            <div class="split-side"><span>GRT</span><strong>+@(Catalog.PoolPerLevel - heaGain)</strong><span class="muted">max @(CharacterRules.MaxGrt(c)) → @(CharacterRules.MaxGrt(c) + Catalog.PoolPerLevel - heaGain)</span></div>
+        </div>
+        <div class="quickbuilds">
+            @foreach (var h in new[] { 0, 2, 3, 4, 6 })
+            {
+                var hv = h;
+                <button type="button" class="btn btn-sm @(heaGain == hv ? "btn-primary" : "")" @onclick="() => heaGain = hv">@hv HEA / @(6 - hv) GRT</button>
+            }
+        </div>
+        break;
+
+    case 1: // ------------------------------------------------------------ Power
+        <h2>Choose one power</h2>
+        <div class="tabs">
+            <button type="button" class="tab @(tab == Tab.Class ? "active" : "")" @onclick="() => SetTab(Tab.Class)">@(cls?.Name ?? "Class") (@options.ClassPowers.Count)</button>
+            <button type="button" class="tab @(tab == Tab.Advanced ? "active" : "")" @onclick="() => SetTab(Tab.Advanced)">Advanced (@options.AdvancedPowers.Count)</button>
+            @if (options.WeirdAllowed)
+            {
+                <button type="button" class="tab @(tab == Tab.Weird ? "active" : "")" @onclick="() => SetTab(Tab.Weird)">Spill-touch (@options.WeirdPowers.Count)</button>
+            }
+            <button type="button" class="tab @(tab == Tab.Multiclass ? "active" : "")" @onclick="() => SetTab(Tab.Multiclass)">Multiclass</button>
+        </div>
+
+        @switch (tab)
+        {
+            case Tab.Class:
+                @if (options.ClassPowers.Count == 0) { <p>You already have every @cls?.Name power. Try an advanced power@(options.WeirdAllowed ? " or a Spill-touch power" : "").</p> }
+                <div class="power-grid">
+                    @foreach (var p in options.ClassPowers)
+                    {
+                        var pw = p;
+                        <PowerCard Power="pw" Selected="selected == pw" OnToggle="Select">
+                            @if (pw.Choice != ChoiceKind.None)
+                            {
+                                <ChoiceInput Power="pw" @bind-Value="choice" Exclude="OwnedWeird" />
+                            }
+                        </PowerCard>
+                    }
+                </div>
+                break;
+            case Tab.Advanced:
+                <div class="power-grid">
+                    @foreach (var p in options.AdvancedPowers)
+                    {
+                        var pw = p;
+                        <PowerCard Power="pw" Selected="selected == pw" OnToggle="Select" />
+                    }
+                </div>
+                break;
+            case Tab.Weird:
+                <p class="hint">
+                    @if (cls?.CanLearnWeird == true) { <span>As a @cls.Name you can take a Weird power instead of a class power. Each use risks your Spill mark.</span> }
+                    else { <span>At level 10+, any class may take one Spill-touch power. Tapping the Spill has a price.</span> }
+                </p>
+                <div class="power-grid">
+                    @foreach (var p in options.WeirdPowers)
+                    {
+                        var pw = p;
+                        <PowerCard Power="pw" Selected="selected == pw" OnToggle="Select" Extra="@(Catalog.RecommendedSpillTouch.Contains(pw.Id) ? "recommended" : null)" />
+                    }
+                </div>
+                break;
+            case Tab.Multiclass:
+                <p class="hint">If your group allows it: take another class's power, and give up one of your own (you could take it back at a later level).</p>
+                <label>Give up
+                    <select @bind="giveUp">
+                        <option value="">— choose a power to give up —</option>
+                        @foreach (var p in c.Powers.Where(p => !p.GainAll && p.Source != PowerSource.People))
+                        {
+                            <option value="@p.PowerId">@p.DisplayName (@p.Origin)</option>
+                        }
+                    </select>
+                </label>
+                @foreach (var group in options.OtherClassPowers.GroupBy(x => x.Class))
+                {
+                    <h3>@group.Key.Name</h3>
+                    <div class="power-grid">
+                        @foreach (var (_, p) in group)
+                        {
+                            var pw = p;
+                            <PowerCard Power="pw" Selected="selected == pw" OnToggle="Select" />
+                        }
+                    </div>
+                }
+                break;
+        }
+        break;
+
+    case 2: // ------------------------------------------------------------ Review
+        <h2>Review</h2>
+        <ul class="review-list">
+            <li>Level <strong>@c.Level → @(c.Level + 1)</strong></li>
+            <li>HEA max <strong>@CharacterRules.MaxHea(c) → @(CharacterRules.MaxHea(c) + heaGain)</strong> (+@heaGain, current HEA too)</li>
+            <li>GRT max <strong>@CharacterRules.MaxGrt(c) → @(CharacterRules.MaxGrt(c) + Catalog.PoolPerLevel - heaGain)</strong> (+@(Catalog.PoolPerLevel - heaGain), current GRT too)</li>
+            @if (selected is not null)
+            {
+                <li>New power: <strong>@BuildPower().DisplayName</strong> — @BuildPower().Summary</li>
+            }
+            @if (tab == Tab.Multiclass && c.Powers.FirstOrDefault(p => p.PowerId == giveUp) is { } dropped)
+            {
+                <li>Give up: <strong>@dropped.DisplayName</strong></li>
+            }
+        </ul>
+        <div class="reminders">
+            <h3>Coming home checklist</h3>
+            <ul>
+                <li>Roll d12 vs exposure for a mark, then reset exposure (use the button on the runner's page).</li>
+                <li>Sell leavings (Institute pays ⅓; tuned ×2).</li>
+                <li>Pay debts · maintenance dose · recharge cells.</li>
+                <li>Rest, heal, repair.</li>
+            </ul>
+        </div>
+        break;
+}
+</section>
+
+<Problems Items="problems" />
+
+<div class="wizard-nav">
+    @if (step > 0) { <button type="button" class="btn" @onclick="() => { problems = null; step--; }">Back</button> }
+    else { <a class="btn" href="character/@c.Id">Cancel</a> }
+    <span class="spacer"></span>
+    @if (step < StepNames.Length - 1)
+    {
+        <button type="button" class="btn btn-primary" @onclick="Next">Next</button>
+    }
+    else
+    {
+        <button type="button" class="btn btn-primary" @onclick="Apply">Gain level @(c.Level + 1)</button>
+    }
+</div>
+
+@code {
+    enum Tab { Class, Advanced, Weird, Multiclass }
+    static readonly string[] StepNames = ["Pool", "Power", "Review"];
+
+    [Parameter] public Guid Id { get; set; }
+
+    Character? c;
+    ClassDef? cls;
+    LevelUpOptions options = new([], [], [], [], false);
+    int step;
+    int heaGain = 3;
+    Tab tab;
+    PowerDef? selected;
+    string choice = "";
+    string giveUp = "";
+    List<string>? problems;
+
+    protected override void OnParametersSet()
+    {
+        c = Store.Get(Id);
+        if (c is null) return;
+        cls = Catalog.FindClass(c.ClassId);
+        options = CharacterRules.LevelUpOptions(c, c.Level + 1);
+    }
+
+    HashSet<string> OwnedWeird => c!.Powers.Select(p => Catalog.FindWeird(p.Choice)?.Id ?? (p.Source == PowerSource.Weird ? p.PowerId : ""))
+        .Where(x => x.Length > 0).ToHashSet();
+
+    void SetSplit(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var grt)) heaGain = Catalog.PoolPerLevel - grt;
+    }
+
+    void SetTab(Tab t)
+    {
+        tab = t;
+        selected = null;
+        choice = "";
+    }
+
+    void Select(PowerDef p)
+    {
+        selected = selected == p ? null : p;
+        choice = "";
+    }
+
+    CharacterPower BuildPower()
+    {
+        var p = selected!;
+        var (source, origin) = tab switch
+        {
+            Tab.Advanced => (PowerSource.Advanced, "Advanced"),
+            Tab.Weird => (PowerSource.Weird, "Spill-touch"),
+            Tab.Multiclass => (PowerSource.OtherClass, options.OtherClassPowers.First(x => x.Power == p).Class.Name),
+            _ => (PowerSource.Class, cls?.Name ?? ""),
+        };
+        return CharacterRules.MakePower(p, source, origin, choice, c!.Level + 1);
+    }
+
+    List<string> ValidatePower()
+    {
+        if (selected is null) return ["Choose a power."];
+        if (selected.Choice != ChoiceKind.None && string.IsNullOrWhiteSpace(choice)) return [$"{selected.Name}: choose {selected.ChoicePrompt.ToLowerInvariant()}."];
+        if (tab == Tab.Multiclass && string.IsNullOrEmpty(giveUp)) return ["Multiclassing: choose a power to give up."];
+        return [];
+    }
+
+    void Next()
+    {
+        problems = step == 1 ? ValidatePower() : [];
+        if (problems.Count == 0) step++;
+    }
+
+    void Apply()
+    {
+        problems = ValidatePower();
+        if (problems.Count > 0) { step = 1; return; }
+        CharacterRules.ApplyLevelUp(c!, heaGain, BuildPower(), tab == Tab.Multiclass ? giveUp : null);
+        Store.Save(c!);
+        Nav.NavigateTo($"character/{c!.Id}");
+    }
+}

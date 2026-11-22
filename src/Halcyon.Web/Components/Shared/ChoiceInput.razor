@@ -1,0 +1,58 @@
+@* Input for powers that need a player choice: a score, free text, HEA/GRT, or a Weird power. *@
+@switch (Power.Choice)
+{
+    case ChoiceKind.Score:
+        <label class="inline">@Power.ChoicePrompt
+            <select value="@Value" @onchange="e => Set(e.Value?.ToString())">
+                <option value="">— choose —</option>
+                @foreach (var s in Enum.GetValues<Score>())
+                {
+                    <option value="@Catalog.ScoreName(s)">@Catalog.ScoreName(s)</option>
+                }
+            </select>
+        </label>
+        break;
+    case ChoiceKind.HeaOrGrt:
+        <label class="inline">@Power.ChoicePrompt
+            <select value="@Value" @onchange="e => Set(e.Value?.ToString())">
+                <option value="">— choose —</option>
+                <option value="+6 max HEA">+6 max HEA</option>
+                <option value="+4 max GRT">+4 max GRT</option>
+            </select>
+        </label>
+        break;
+    case ChoiceKind.WeirdPower:
+        <label class="inline">@Power.ChoicePrompt
+            <select value="@Value" @onchange="e => Set(e.Value?.ToString())">
+                <option value="">— choose —</option>
+                @foreach (var w in Catalog.WeirdPowers.Where(w => Exclude is null || !Exclude.Contains(w.Id))
+                    .OrderBy(w => Catalog.RecommendedSpillTouch.Contains(w.Id) ? 0 : 1).ThenBy(w => w.Name))
+                {
+                    <option value="@w.Name">@w.Name@(Catalog.RecommendedSpillTouch.Contains(w.Id) ? " ★" : "") — @w.Cost</option>
+                }
+            </select>
+        </label>
+        @if (Catalog.FindWeird(Value) is { } chosen)
+        {
+            <div class="hint">@chosen.Type · @chosen.Cost — @chosen.Summary</div>
+        }
+        else
+        {
+            <div class="hint">★ = recommended for the Sensitive.</div>
+        }
+        break;
+    case ChoiceKind.Text:
+        <label class="inline">@Power.ChoicePrompt
+            <input value="@Value" @onchange="e => Set(e.Value?.ToString())" placeholder="Be specific" />
+        </label>
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired] public PowerDef Power { get; set; } = default!;
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyCollection<string>? Exclude { get; set; }
+
+    Task Set(string? v) => ValueChanged.InvokeAsync(v ?? "");
+}

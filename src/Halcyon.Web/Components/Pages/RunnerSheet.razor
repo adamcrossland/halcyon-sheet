@@ -1,0 +1,381 @@
+@page "/character/{Id:guid}"
+@inject CharacterStore Store
+@inject NavigationManager Nav
+
+<PageTitle>Halcyon · @(c?.Name ?? "Runner")</PageTitle>
+
+@if (c is null)
+{
+    <p>That runner isn't on file. <a href="">Back to the roster</a>.</p>
+    return;
+}
+
+<div class="page-head sticky">
+    <div>
+        <h1>@c.Name</h1>
+        <div class="muted">@Catalog.FindPeople(c.PeopleId)?.Name @Catalog.FindClass(c.ClassId)?.Name · level @c.Level</div>
+    </div>
+    <div class="actions">
+        @if (dirty) { <span class="unsaved">Unsaved changes</span> }
+        <button class="btn btn-primary" @onclick="Save" disabled="@(!dirty)">Save</button>
+        <a class="btn" href="character/@c.Id/levelup">Level up</a>
+        <a class="btn" href="characters/@c.Id/sheet.pdf" target="_blank" @onclick="SaveFirst">PDF</a>
+        <a class="btn btn-ghost" href="characters/@c.Id/sheet.pdf?tracking=false" target="_blank" title="Leave current HEA/GRT, exposure and conditions blank for pencil">Clean PDF</a>
+        <a class="btn btn-ghost" href="characters/@c.Id/export.json" download>Export</a>
+    </div>
+</div>
+
+@if (justCreated)
+{
+    <p class="notice">@c.Name is on file. Download the PDF, or keep filling in details below.</p>
+}
+@if (saved) { <p class="notice">Saved.</p> }
+
+<div @onchange="MarkDirty" @oninput="MarkDirty">
+
+<section class="panel">
+    <h2>Identity</h2>
+    <div class="grid-3">
+        <label>Name / street name <input @bind="c.Name" /></label>
+        <label>Player <input @bind="c.Player" /></label>
+        <label>Crew <input @bind="c.Crew" /></label>
+    </div>
+    <label>Look &amp; distinguishing marks <input @bind="c.Look" /></label>
+    <label>Burden <textarea rows="2" @bind="c.Burden"></textarea></label>
+</section>
+
+<section class="panel">
+    <h2>Scores &amp; pool</h2>
+    <div class="score-grid">
+        @foreach (var (score, longName, _) in Catalog.ScoreInfo)
+        {
+            var s = score;
+            var bonus = CharacterRules.ScoreBonus(c, s);
+            <div class="score-box">
+                <div class="score-name">@Catalog.ScoreName(s) <small>@longName</small></div>
+                <select value="@c.Dice.GetValueOrDefault(s)" @onchange="e => SetDie(s, e.Value?.ToString())">
+                    @foreach (var die in CharacterRules.DieSteps) { <option value="@die">d@(die)</option> }
+                </select>
+                <div class="hint">@(bonus != 0 ? $"bonus {CharacterRules.Signed(bonus)}" : "no bonus")</div>
+            </div>
+        }
+    </div>
+    <div class="pool-grid">
+        <div class="pool">
+            <div class="pool-title">HEA</div>
+            <label>Current <input type="number" @bind="c.HeaCurrent" /></label>
+            <div>Max <strong>@CharacterRules.MaxHea(c)</strong>
+                <span class="hint">= @c.BaseHea start + @c.Advancement.Sum(a => a.HeaGain) levels @(c.HeaMaxAdjust != 0 ? CharacterRules.Signed(c.HeaMaxAdjust) + " adj." : "")</span></div>
+            <label>Adjust max <input type="number" @bind="c.HeaMaxAdjust" title="e.g. −1 each time you come back from 0 HEA" /></label>
+            <button class="btn btn-sm" @onclick="() => { c.HeaCurrent = CharacterRules.MaxHea(c); dirty = true; }">Fill</button>
+        </div>
+        <div class="pool">
+            <div class="pool-title">GRT</div>
+            <label>Current <input type="number" @bind="c.GrtCurrent" /></label>
+            <div>Max <strong>@CharacterRules.MaxGrt(c)</strong>
+                <span class="hint">= @c.BaseGrt start + @c.Advancement.Sum(a => a.GrtGain) levels @(c.GrtMaxAdjust != 0 ? CharacterRules.Signed(c.GrtMaxAdjust) + " adj." : "")</span></div>
+            <label>Adjust max <input type="number" @bind="c.GrtMaxAdjust" /></label>
+            <button class="btn btn-sm" @onclick="() => { c.GrtCurrent = CharacterRules.MaxGrt(c); dirty = true; }">Fill</button>
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>The Spill</h2>
+    <div class="grid-3">
+        <label>Exposure (0–12) <input type="number" min="0" max="12" @bind="c.Exposure" /></label>
+        <label>Spill marks (0–12) <input type="number" min="0" max="12" @bind="c.SpillMarks" /></label>
+        <label>Note under the marks track <input @bind="c.SpillMarkNote" /></label>
+    </div>
+    <div class="coming-home">
+        <button class="btn" @onclick="ComingHome">Coming home: roll d12 vs exposure</button>
+        @if (homeRoll is not null) { <span class="roll-result">@homeRoll</span> }
+    </div>
+    <label>What the Spill took <span class="hint">one mark per line</span>
+        <textarea rows="4" value="@string.Join("\n", c.WhatTheSpillTook)" @onchange="e => c.WhatTheSpillTook = Lines(e.Value)"></textarea>
+    </label>
+    <h3>Conditions</h3>
+    <div class="grid-4">
+        <label class="check"><input type="checkbox" @bind="c.Conditions.Prone" /> Prone</label>
+        <label>Bleed <input @bind="c.Conditions.Bleed" /></label>
+        <label>Burn <input @bind="c.Conditions.Burn" /></label>
+        <label>Stun <input @bind="c.Conditions.Stun" /></label>
+        <label>Fatigue (hrs) <input @bind="c.Conditions.Fatigue" /></label>
+        <label>Toxin <input @bind="c.Conditions.Toxin" /></label>
+        <label>Groggy (score) <input @bind="c.Conditions.Groggy" /></label>
+        <label>Lost max GRT <input @bind="c.Conditions.LostMaxGrt" /></label>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Weapons &amp; armor <small>the sheet has room for 3 weapons; more go on an extra page</small></h2>
+    <table class="edit-table">
+        <thead><tr><th>Weapon</th><th>Dmg</th><th>Range</th><th>Tags &amp; legality</th><th>Shots / charge</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var w in c.Weapons.ToList())
+            {
+                <tr>
+                    <td><input @bind="w.Name" /></td>
+                    <td><input class="narrow" @bind="w.Damage" /></td>
+                    <td><input class="narrow" @bind="w.Range" /></td>
+                    <td><input @bind="w.Tags" /></td>
+                    <td><input class="narrow" @bind="w.Shots" /></td>
+                    <td><button class="linklike" @onclick="() => { c.Weapons.Remove(w); dirty = true; }">remove</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <div class="add-row">
+        <select @bind="addWeaponId">
+            <option value="">Add a weapon from the list…</option>
+            @foreach (var g in Catalog.Gear.Where(g => g.Kind == GearKind.Weapon))
+            {
+                <option value="@g.Id">@g.Name (@g.Weapon!.Damage)</option>
+            }
+        </select>
+        <button class="btn btn-sm" @onclick="AddWeapon">Add</button>
+        <button class="btn btn-sm btn-ghost" @onclick="() => { c.Weapons.Add(new Weapon()); dirty = true; }">Add blank row</button>
+    </div>
+    <label>Spare cells / reloads <input @bind="c.Reloads" /></label>
+
+    <div class="grid-4">
+        <label>Armor
+            <select value="@c.Armor.Name" @onchange="e => SetArmor(e.Value?.ToString())">
+                <option value="">None</option>
+                @foreach (var a in Catalog.Gear.Where(g => g.Kind == GearKind.Armor))
+                {
+                    <option value="@a.Name">@a.Name (DR @a.ArmorDr)</option>
+                }
+                @if (!string.IsNullOrEmpty(c.Armor.Name) && Catalog.Gear.All(g => g.Name != c.Armor.Name))
+                {
+                    <option value="@c.Armor.Name">@c.Armor.Name</option>
+                }
+            </select>
+        </label>
+        <label>Armor DR <input type="number" @bind="c.Armor.Dr" /></label>
+        <div>Natural DR <strong>@CharacterRules.NaturalDr(c)</strong> · Total <strong>@CharacterRules.TotalDr(c)</strong> <span class="hint">(max 4)</span></div>
+        <label>Notes &amp; penalties <input @bind="c.Armor.Notes" /></label>
+    </div>
+</section>
+
+<section class="panel">
+    <h2>Powers</h2>
+    <table class="edit-table powers-table">
+        <thead><tr><th>Power</th><th>From</th><th>Type</th><th>Cost</th><th>Summary</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var p in c.Powers.ToList())
+            {
+                <tr>
+                    <td><strong>@p.DisplayName</strong>@if (p.LevelGained > 1) { <span class="muted"> L@(p.LevelGained)</span> }</td>
+                    <td class="small">@p.Origin@(p.GainAll ? " (gain all)" : "")</td>
+                    <td class="small">@p.Type</td>
+                    <td class="small">@p.Cost</td>
+                    <td class="small"><input @bind="p.Summary" /></td>
+                    <td>
+                        @if (!p.GainAll)
+                        {
+                            <button class="linklike" @onclick="() => { c.Powers.Remove(p); dirty = true; }">remove</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <details>
+        <summary>Add a custom power (GM ruling, house rule)</summary>
+        <div class="grid-4">
+            <label>Name <input @bind="custom.Name" /></label>
+            <label>Type <input @bind="custom.Type" placeholder="passive" /></label>
+            <label>Cost <input @bind="custom.Cost" placeholder="3 GRT" /></label>
+            <label>Summary <input @bind="custom.Summary" /></label>
+        </div>
+        <button class="btn btn-sm" @onclick="AddCustom" disabled="@string.IsNullOrWhiteSpace(custom.Name)">Add power</button>
+    </details>
+    <p class="hint">New powers normally come from <a href="character/@c.Id/levelup">levelling up</a>.</p>
+</section>
+
+<section class="panel">
+    <h2>Gear, leavings &amp; money</h2>
+    <label>Gear &amp; kit <span class="hint">one item per line (10 lines on the sheet)</span>
+        <textarea rows="8" value="@string.Join("\n", c.Gear)" @onchange="e => c.Gear = Lines(e.Value)"></textarea>
+    </label>
+    <label>Oddment <input @bind="c.Oddment" /></label>
+
+    <h3>Leavings carried</h3>
+    <table class="edit-table">
+        <thead><tr><th>Leaving</th><th>Str.</th><th>Tuned</th><th>Packed</th><th>Use &amp; cost</th><th>Quirk · rumor · value</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var l in c.Leavings.ToList())
+            {
+                <tr>
+                    <td><input @bind="l.Name" /></td>
+                    <td><input class="tiny" @bind="l.Strangeness" /></td>
+                    <td class="center"><input type="checkbox" @bind="l.Tuned" /></td>
+                    <td class="center"><input type="checkbox" @bind="l.Packed" /></td>
+                    <td><input @bind="l.Use" /></td>
+                    <td><input @bind="l.Quirk" /></td>
+                    <td><button class="linklike" @onclick="() => { c.Leavings.Remove(l); dirty = true; }">remove</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <button class="btn btn-sm" @onclick="() => { c.Leavings.Add(new Leaving()); dirty = true; }">Add leaving</button>
+
+    <div class="grid-2 spaced">
+        <label>Scrip on hand <input type="number" @bind="c.Scrip" /></label>
+        <label>Stashed (where?) <input @bind="c.Stashed" /></label>
+        <label>Debts &amp; who holds them <input @bind="c.Debts" /></label>
+        <label>Permits &amp; papers <input @bind="c.Permits" /></label>
+    </div>
+
+    <h3>Contacts</h3>
+    <table class="edit-table">
+        <thead><tr><th>Who</th><th>Owes you / wants</th><th>Used</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var k in c.Contacts.ToList())
+            {
+                <tr>
+                    <td><input @bind="k.Who" /></td>
+                    <td><input @bind="k.OwesOrWants" /></td>
+                    <td class="center"><input type="checkbox" @bind="k.Used" /></td>
+                    <td><button class="linklike" @onclick="() => { c.Contacts.Remove(k); dirty = true; }">remove</button></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <button class="btn btn-sm" @onclick="() => { c.Contacts.Add(new Contact()); dirty = true; }">Add contact</button>
+    <button class="btn btn-sm btn-ghost" @onclick="NewAdventure">New adventure: clear "used" boxes</button>
+</section>
+
+<section class="panel">
+    <h2>The file on you</h2>
+    <label>Why do you keep going back in? <input @bind="c.WhyGoBackIn" /></label>
+    <label>Who's waiting for you in Halcyon, and what do they think you do? <input @bind="c.WhoIsWaiting" /></label>
+    <label>What did you see in there that you've never told anyone? <input @bind="c.WhatYouSaw" /></label>
+    <label>Notes <textarea rows="4" @bind="c.Notes"></textarea></label>
+</section>
+
+</div>
+
+@if (c.Advancement.Count > 0)
+{
+    <section class="panel">
+        <h2>Advancement history</h2>
+        <table class="edit-table">
+            <thead><tr><th>Level</th><th>HEA</th><th>GRT</th><th>Power gained</th><th>Given up</th><th>Date</th></tr></thead>
+            <tbody>
+                @foreach (var a in c.Advancement)
+                {
+                    <tr><td>@a.Level</td><td>+@a.HeaGain</td><td>+@a.GrtGain</td><td>@a.PowerGained</td><td>@a.PowerGivenUp</td><td class="small">@a.Date.LocalDateTime.ToString("d")</td></tr>
+                }
+            </tbody>
+        </table>
+    </section>
+}
+
+<div class="wizard-nav">
+    <a class="btn" href="">Back to roster</a>
+    <span class="spacer"></span>
+    <button class="btn btn-primary" @onclick="Save" disabled="@(!dirty)">Save</button>
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "new")] public int? New { get; set; }
+
+    Character? c;
+    bool dirty, saved, justCreated;
+    string addWeaponId = "";
+    string? homeRoll;
+    readonly CharacterPower custom = new() { Source = PowerSource.Custom, Origin = "Custom" };
+
+    protected override void OnParametersSet()
+    {
+        c = Store.Get(Id);
+        justCreated = New == 1;
+    }
+
+    void MarkDirty()
+    {
+        dirty = true;
+        saved = false;
+    }
+
+    void Save()
+    {
+        if (c is null) return;
+        Store.Save(c);
+        dirty = false;
+        saved = true;
+        justCreated = false;
+    }
+
+    void SaveFirst()
+    {
+        if (dirty) Save();
+    }
+
+    static List<string> Lines(object? value) =>
+        (value?.ToString() ?? "").Replace("\r", "").Split('\n').Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+
+    void SetDie(Score s, string? v)
+    {
+        if (int.TryParse(v, out var die)) c!.Dice[s] = die;
+        dirty = true;
+    }
+
+    void SetArmor(string? name)
+    {
+        var def = Catalog.Gear.FirstOrDefault(g => g.Kind == GearKind.Armor && g.Name == name);
+        c!.Armor = def is null ? new Armor() : new Armor { Name = def.Name, Dr = def.ArmorDr, Notes = def.Notes };
+        dirty = true;
+    }
+
+    void AddWeapon()
+    {
+        if (Catalog.FindGear(addWeaponId) is { } g) CharacterRules.AddGear(c!, g);
+        addWeaponId = "";
+        dirty = true;
+    }
+
+    void AddCustom()
+    {
+        c!.Powers.Add(new CharacterPower
+        {
+            PowerId = "custom-" + Guid.NewGuid().ToString("N")[..8],
+            Name = custom.Name.Trim(),
+            Type = custom.Type.Trim(),
+            Cost = custom.Cost.Trim(),
+            Summary = custom.Summary.Trim(),
+            Source = PowerSource.Custom,
+            Origin = "Custom",
+            LevelGained = c.Level,
+        });
+        custom.Name = custom.Type = custom.Cost = custom.Summary = "";
+        dirty = true;
+    }
+
+    void ComingHome()
+    {
+        int roll = Random.Shared.Next(1, 13);
+        if (roll <= c!.Exposure && c.SpillMarks < 12)
+        {
+            c.SpillMarks++;
+            var text = Catalog.SpillMarkTable[c.SpillMarks - 1];
+            c.WhatTheSpillTook.Add($"{c.SpillMarks}. {text}");
+            homeRoll = $"Rolled {roll} vs exposure {c.Exposure}: you gain mark {c.SpillMarks} — {text} Exposure reset to 0.";
+        }
+        else
+        {
+            homeRoll = $"Rolled {roll} vs exposure {c.Exposure}: no new mark. Exposure reset to 0.";
+        }
+        c.Exposure = 0;
+        dirty = true;
+    }
+
+    void NewAdventure()
+    {
+        foreach (var k in c!.Contacts) k.Used = false;
+        dirty = true;
+    }
+}

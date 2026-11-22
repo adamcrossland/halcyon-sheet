@@ -1,0 +1,23 @@
+@* Wizard progress bar. Steps before Current can be revisited. *@
+<ol class="steps">
+    @for (int i = 0; i < Steps.Count; i++)
+    {
+        var index = i;
+        <li class="@(index == Current ? "current" : index < Current ? "done" : "")">
+            @if (index < Current)
+            {
+                <button type="button" class="linklike" @onclick="() => OnSelect.InvokeAsync(index)">@(index + 1). @Steps[index]</button>
+            }
+            else
+            {
+                <span>@(index + 1). @Steps[index]</span>
+            }
+        </li>
+    }
+</ol>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> Steps { get; set; } = [];
+    [Parameter] public int Current { get; set; }
+    [Parameter] public EventCallback<int> OnSelect { get; set; }
+}

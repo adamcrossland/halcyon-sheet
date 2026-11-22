@@ -1,0 +1,22 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PDFsharp" Version="6.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\CharacterSheet.pdf" LogicalName="Halcyon.Core.Assets.CharacterSheet.pdf" />
+    <EmbeddedResource Include="Assets\SheetLayout.txt" LogicalName="Halcyon.Core.Assets.SheetLayout.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Halcyon.Tests" />
+  </ItemGroup>
+
+</Project>
