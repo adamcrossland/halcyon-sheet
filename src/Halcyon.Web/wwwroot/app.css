@@ -34,6 +34,8 @@ html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: v
 a { color: inherit; }
 h1, h2, h3 { font-family: var(--label); letter-spacing: .04em; margin: 0 0 .5rem; }
 h1 { font-size: 2rem; text-transform: uppercase; }
+/* Blazor focuses the page heading after navigation (for screen readers); give its outline some room. */
+h1:focus, h1:focus-visible { outline: 2px solid var(--rule); outline-offset: .4rem; border-radius: 3px; }
 h1 small, h2 small, h3 small { font-family: var(--body); font-size: .8rem; letter-spacing: 0; color: var(--muted); text-transform: none; font-weight: 400; margin-left: .5rem; }
 h2 { font-size: 1.4rem; text-transform: uppercase; border-top: 2px solid var(--ink); padding-top: .3rem; }
 h3 { font-size: 1.1rem; text-transform: uppercase; margin-top: 1.2rem; }
